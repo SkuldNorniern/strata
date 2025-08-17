@@ -1,0 +1,11 @@
+<div class="fab glass fab-page" id="fab">
+    <div class="fab-menu">
+        <a href="/" class="fab-item" title="Home"></a>
+        <div class="fab-search">
+            <input type="text" placeholder="Search..." onkeypress="if(event.key==='Enter'){window.location.href='/search?q='+this.value}">
+        </div>
+        <div class="fab-actions">
+            {{BOTTOM_ACTIONS}}
+        </div>
+    </div>
+</div>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{TITLE}}</title>
+    {{STYLE}}
+  </head>
+  <body>
+    <a id="top"></a>
+    <div class="layout">
+      <aside class="sidebar glass">{{SIDEBAR}}</aside>
+      <main class="content"><div class="article-card glass">{{CONTENT}}</div></main>
+    </div>
+    <a class="back-to-top glass" href="#top" aria-label="Back to top">↑</a>
+    <div class="fab glass" id="fab">
+      <div class="fab-icon">+</div>
+      <div class="fab-menu">
+        <a href="/" class="fab-item">🏠 Home</a>
+        <a href="/search" class="fab-item">🔍 Search</a>
+        <div class="fab-divider"></div>
+        <div class="fab-actions" id="fab-actions">{{BOTTOM_ACTIONS}}</div>
+      </div>
+    </div>
+  </body>
+</html>

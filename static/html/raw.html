@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Raw: {{TITLE}} - Strata Wiki</title>
+    <link rel="stylesheet" href="/static/css/strata.css">
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar glass">{{SIDEBAR}}</aside>
+        <main class="content">
+            <div class="article-card glass">
+                <div class="raw-markdown">
+                    <div class="raw-header">
+                        <h1>{{TITLE}}</h1>
+                        <p class="raw-info">
+                            This is the raw Markdown content for the page. 
+                            <a href="{{PAGE_URL}}">← Back to rendered view</a>
+                        </p>
+                    </div>
+                    <pre class="raw-content">{{CONTENT}}</pre>
+                </div>
+            </div>
+        </main>
+    </div>
+    <a class="back-to-top glass" href="#top" aria-label="Back to top">↑</a>
+    {{FAB}}
+</body>
+</html>
+
