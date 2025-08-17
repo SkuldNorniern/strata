@@ -1,13 +1,6 @@
 use std::io;
 use axum::{http::StatusCode, response::{IntoResponse, Response}};
 
-/// Application state shared across all handlers
-#[derive(Clone)]
-pub struct AppState {
-    pub base_dir: std::sync::Arc<std::path::PathBuf>,
-    pub static_dir: std::sync::Arc<std::path::PathBuf>,
-}
-
 /// Custom error types for the wiki application
 #[derive(Debug)]
 pub enum WikiError {
@@ -15,6 +8,9 @@ pub enum WikiError {
     NotFound,
     InvalidPath,
     TemplateError(String),
+    SearchError(String),
+    NavigationError(String),
+    RenderError(String),
 }
 
 impl From<io::Error> for WikiError {
@@ -38,8 +34,21 @@ impl IntoResponse for WikiError {
                 format!("Template error: {}", e),
             )
                 .into_response(),
+            WikiError::SearchError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Search error: {}", e),
+            )
+                .into_response(),
+            WikiError::NavigationError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Navigation error: {}", e),
+            )
+                .into_response(),
+            WikiError::RenderError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
         }
     }
 }
-
-// These types are not currently used but kept for future extensibility
