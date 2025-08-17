@@ -65,7 +65,7 @@ pub async fn handle_path(
 ) -> Result<impl IntoResponse, WikiError> {
     let normalized = normalize_path(&path);
     let requested = state.base_dir.join(&normalized);
-    
+
     let file_service = FileService::new(state.base_dir.as_ref().clone());
     let navigation = NavigationComponent::new(file_service.clone());
     let fab = FabComponent::new();
@@ -73,32 +73,32 @@ pub async fn handle_path(
     
     // First check if the exact path exists
     if requested.exists() {
-        if requested.is_dir() {
+    if requested.is_dir() {
             // Check for index.md or README.md in directory
-            let index_md = requested.join("index.md");
-            let readme_md = requested.join("README.md");
+        let index_md = requested.join("index.md");
+        let readme_md = requested.join("README.md");
             
-            if index_md.is_file() {
+        if index_md.is_file() {
                 // Convert full path to relative path for FileService
                 let content = file_service.read_file(Path::new(&format!("{}/index.md", normalized)))?;
                 let markdown_service = MarkdownService::new();
                 let result = markdown_service.render_with_toc(&content)?;
-                let meta = last_modified_html(&index_md);
+            let meta = last_modified_html(&index_md);
                 let body = format!("{}{}", meta, result.html);
                 let actions = fab.generate_actions(&normalized);
                 let fab_html = fab.generate_fab_html(&normalized, &actions);
                 let sidebar = navigation.build_sidebar_html(&normalized)?;
                 let title = result.title.as_deref().unwrap_or(&normalized);
                 let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, title, &result.toc)?;
-                return Ok(Html(page).into_response());
-            }
+            return Ok(Html(page).into_response());
+        }
             
-            if readme_md.is_file() {
+        if readme_md.is_file() {
                 // Convert full path to relative path for FileService
                 let content = file_service.read_file(Path::new(&format!("{}/README.md", normalized)))?;
                 let markdown_service = MarkdownService::new();
                 let result = markdown_service.render_with_toc(&content)?;
-                let meta = last_modified_html(&readme_md);
+            let meta = last_modified_html(&readme_md);
                 let body = format!("{}{}", meta, result.html);
                 let actions = fab.generate_actions(&normalized);
                 let fab_html = fab.generate_fab_html(&normalized, &actions);
@@ -114,14 +114,14 @@ pub async fn handle_path(
             let actions = fab.generate_actions(&normalized);
             let fab_html = fab.generate_fab_html(&normalized, &actions);
             let page = templates.render_page_with_nav(&sidebar, &html, &fab_html, &normalized)?;
-            return Ok(Html(page).into_response());
-        }
-        
-        if requested.is_file() {
+        return Ok(Html(page).into_response());
+    }
+
+    if requested.is_file() {
             return serve_path(&state, &normalized, &requested).await;
         }
     }
-    
+
     // If the exact path doesn't exist, check for .md variant
     let md_variant = requested.with_extension("md");
     
@@ -141,7 +141,7 @@ pub async fn handle_path(
         let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, title, &result.toc)?;
         return Ok(Html(page).into_response());
     }
-    
+
     Err(WikiError::NotFound)
 }
 
@@ -166,7 +166,7 @@ async fn serve_path(state: &AppState, req_path: &str, path: &Path) -> Result<Res
         let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, result.title.as_deref().unwrap_or(req_path), &result.toc)?;
         return Ok(Html(page).into_response());
     }
-    
+
     let bytes = std::fs::read(path)?;
     let content_type = file_service.content_type_for(path);
     let mut resp = Response::new(Body::from(bytes));
@@ -196,7 +196,7 @@ fn render_directory_listing(file_service: &FileService, req_path: &str) -> Resul
     for entry in entries {
         let href = if req_path.is_empty() {
             if entry.is_dir {
-                format!("/{}", entry.name)
+            format!("/{}", entry.name)
             } else {
                 // For markdown files, remove .md extension in the URL
                 let name_without_ext = entry.name.trim_end_matches(".md");
@@ -204,7 +204,7 @@ fn render_directory_listing(file_service: &FileService, req_path: &str) -> Resul
             }
         } else {
             if entry.is_dir {
-                format!("/{}/{}", req_path, entry.name)
+            format!("/{}/{}", req_path, entry.name)
             } else {
                 // For markdown files, remove .md extension in the URL
                 let name_without_ext = entry.name.trim_end_matches(".md");
@@ -275,19 +275,21 @@ pub async fn handle_raw(
     let normalized = normalize_path(&path);
     let requested = state.base_dir.join(&normalized);
     
+    let file_service = FileService::new(state.base_dir.as_ref().clone());
+    let content: String;
+    let display_path: String;
+    
     if !requested.exists() {
         // Check for .md variant
         let md_variant = requested.with_extension("md");
         if md_variant.is_file() {
-            let file_service = FileService::new(state.base_dir.as_ref().clone());
             let relative_path = md_variant.strip_prefix(&*state.base_dir)
                 .map_err(|_| WikiError::InvalidPath)?;
-            let content = file_service.read_file(relative_path)?;
-            return Ok(content.into_response());
-        }
-        
-        // Return HTML 404 page for consistency
-        let error_html = r#"<!doctype html>
+            content = file_service.read_file(relative_path)?;
+            display_path = relative_path.to_string_lossy().to_string();
+        } else {
+            // Return HTML 404 page for consistency
+            let error_html = r#"<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -309,14 +311,57 @@ pub async fn handle_raw(
     </div>
 </body>
 </html>"#;
-        return Ok(Html(error_html.to_string()).into_response());
+            return Ok(Html(error_html.to_string()).into_response());
+        }
+    } else {
+        let relative_path = requested.strip_prefix(&*state.base_dir)
+            .map_err(|_| WikiError::InvalidPath)?;
+        content = file_service.read_file(relative_path)?;
+        display_path = relative_path.to_string_lossy().to_string();
     }
     
-    let file_service = FileService::new(state.base_dir.as_ref().clone());
-    let content = file_service.read_file(&requested)?;
+    // Create the rendered path (remove .md extension for display)
+    let rendered_path = if display_path.ends_with(".md") {
+        display_path[..display_path.len()-3].to_string()
+    } else {
+        display_path.clone()
+    };
     
-    // Return plain text markdown
-    Ok(content.into_response())
+    // Return a proper HTML page with the raw markdown content
+    let raw_html = format!(r#"<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Raw: {}</title>
+    <link rel="stylesheet" href="/static/css/strata.css">
+</head>
+<body>
+    <div class="raw-viewer">
+        <div class="raw-header glass">
+            <div class="raw-title">
+                <h1>Raw Markdown: {}</h1>
+                <p class="raw-path">/raw/{}</p>
+            </div>
+            <div class="raw-actions">
+                <a href="/{}" class="raw-btn primary">← Back to Rendered View</a>
+                <a href="/" class="raw-btn secondary">Go Home</a>
+            </div>
+        </div>
+        <div class="raw-content glass">
+            <pre class="raw-markdown"><code>{}</code></pre>
+        </div>
+    </div>
+</body>
+</html>"#, 
+        display_path, 
+        display_path, 
+        display_path, 
+        rendered_path,
+        escape_html(&content)
+    );
+    
+    Ok(Html(raw_html).into_response())
 }
 
 /// Handle static file requests
@@ -351,20 +396,70 @@ fn render_search_results(query: &str, results: &[crate::types::SearchResult]) ->
     }
     
     content.push_str("<div class=\"search-results\">");
+    content.push_str(&format!("<h2 class=\"search-header\">Search Results for \"{}\"</h2>", escape_html(query)));
     content.push_str(&format!("<p class=\"results-count\">Found {} results</p>", results.len()));
     
     if results.is_empty() {
-        content.push_str("<p class=\"no-results\">No results found for your search.</p>");
+        content.push_str("<div class=\"no-results\">");
+        content.push_str("<p>No results found for your search.</p>");
+        content.push_str("<p>Try:</p>");
+        content.push_str("<ul>");
+        content.push_str("<li>Using different keywords</li>");
+        content.push_str("<li>Checking spelling</li>");
+        content.push_str("<li>Using more general terms</li>");
+        content.push_str("</ul>");
+        content.push_str("</div>");
     } else {
-        content.push_str("<ul class=\"listing\">");
+        content.push_str("<div class=\"search-results-list\">");
         for result in results {
             let href = format!("/{}", result.path);
+            let path_display = result.path.replace(".md", "");
+            
+            content.push_str("<div class=\"search-result-item glass\">");
+            
+            // Title and path
+            content.push_str("<div class=\"result-header\">");
             content.push_str(&format!(
-                "<li><a href=\"{}\">{}</a></li>",
+                "<h3 class=\"result-title\"><a href=\"{}\">{}</a></h3>",
                 escape_attr(&href), escape_html(&result.title)
             ));
+            content.push_str("<div class=\"result-meta\">");
+            content.push_str(&format!(
+                "<span class=\"result-path\">/{}</span>",
+                escape_html(&path_display)
+            ));
+            content.push_str(&format!(
+                "<span class=\"result-stats\">{} matches • {} bytes</span>",
+                result.match_count, result.file_size
+            ));
+            content.push_str("</div>");
+            content.push_str("</div>");
+            
+            // Main excerpt
+            if !result.excerpt.is_empty() {
+                content.push_str(&format!(
+                    "<div class=\"result-excerpt\">{}</div>",
+                    escape_html(&result.excerpt)
+                ));
+            }
+            
+            // Content preview with multiple contexts
+            if !result.content_preview.is_empty() && result.content_preview != result.excerpt {
+                content.push_str(&format!(
+                    "<div class=\"result-preview\">{}</div>",
+                    escape_html(&result.content_preview)
+                ));
+            }
+            
+            // Relevance score (for debugging, can be hidden in production)
+            content.push_str(&format!(
+                "<div class=\"result-relevance\">Relevance: {:.1}</div>",
+                result.relevance
+            ));
+            
+            content.push_str("</div>");
         }
-        content.push_str("</ul>");
+        content.push_str("</div>");
     }
     
     content.push_str("</div>");
