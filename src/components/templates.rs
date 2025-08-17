@@ -1,8 +1,5 @@
-use std::fs;
-use std::path::Path;
+use log::{debug, info};
 use crate::errors::WikiError;
-use crate::types::TemplateContext;
-use crate::utils::escape_attr;
 
 /// Component for handling HTML template rendering
 pub struct TemplateComponent;
@@ -10,86 +7,86 @@ pub struct TemplateComponent;
 impl TemplateComponent {
     /// Create a new template component
     pub fn new() -> Self {
+        debug!("Creating new TemplateComponent");
         Self
     }
 
-    /// Load and render the main HTML shell template
-    pub fn render_shell_template(&self, context: &TemplateContext) -> Result<String, WikiError> {
-        // Try to load base template with multiple possible paths
-        let possible_paths = [
-            "static/html/base.html",
-            "./static/html/base.html",
-            "../static/html/base.html",
-        ];
-        
-        let mut base_tpl = None;
-        
-        for path_str in &possible_paths {
-            let base_path = Path::new(path_str);
-            
-            if let Ok(base) = fs::read_to_string(base_path) {
-                base_tpl = Some(base);
-                break;
-            }
-        }
-        
-        if let Some(base) = base_tpl {
-            let mut html = base;
-            
-            // Replace base template placeholders
-            html = html.replace("{{TITLE}}", &escape_attr(&context.title));
-            html = html.replace("{{STYLE}}", "<link rel=\"stylesheet\" href=\"/static/css/strata.css\">");
-            html = html.replace("{{SIDEBAR}}", &context.sidebar);
-            html = html.replace("{{CONTENT}}", &context.content);
-            html = html.replace("{{FAB}}", &context.fab);
-            
-            return Ok(html);
-        }
-        
-        // Fallback inline shell
-        Ok(format!(
-            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/static/css/strata.css\"></head><body><a id=\"top\"></a><div class=\"layout\"><aside class=\"sidebar glass\">{}</aside><main class=\"content\"><div class=\"article-card glass\">{}</div></main></div><a class=\"back-to-top glass\" href=\"#top\" aria-label=\"Back to top\">↑</a>{}</body></html>",
-            context.title, context.sidebar, context.content, context.fab
-        ))
-    }
-
-    /// Generate a complete page with navigation and content
+    /// Render a page with navigation
     pub fn render_page_with_nav(
         &self,
-        navigation: &str,
+        sidebar: &str,
         content: &str,
         fab: &str,
         title: &str,
     ) -> Result<String, WikiError> {
-        let context = TemplateContext {
-            title: title.to_string(),
-            content: content.to_string(),
-            sidebar: navigation.to_string(),
-            fab: fab.to_string(),
-            toc: None,
-        };
+        debug!("Rendering page with navigation, title: '{}'", title);
+        let start_time = std::time::Instant::now();
         
-        self.render_shell_template(&context)
+        let html = self.render_shell_template(sidebar, content, fab, title)?;
+        
+        let duration = start_time.elapsed();
+        info!("Page with navigation rendered in {:?}ms, title: '{}'", duration.as_millis(), title);
+        
+        Ok(html)
     }
 
-    /// Generate a complete page with navigation, TOC, and content
+    /// Render a page with navigation and table of contents
     pub fn render_page_with_nav_and_toc(
         &self,
-        navigation: &str,
+        sidebar: &str,
         content: &str,
         fab: &str,
         title: &str,
-        toc: &str,
+        _toc: &str,
     ) -> Result<String, WikiError> {
-        let context = TemplateContext {
-            title: title.to_string(),
-            content: content.to_string(),
-            sidebar: navigation.to_string(),
-            fab: fab.to_string(),
-            toc: Some(toc.to_string()),
-        };
+        debug!("Rendering page with navigation and TOC, title: '{}'", title);
+        let start_time = std::time::Instant::now();
         
-        self.render_shell_template(&context)
+        let html = self.render_shell_template(sidebar, content, fab, title)?;
+        
+        let duration = start_time.elapsed();
+        info!("Page with navigation and TOC rendered in {:?}ms, title: '{}'", duration.as_millis(), title);
+        
+        Ok(html)
+    }
+
+    /// Render the shell template with all components
+    fn render_shell_template(
+        &self,
+        sidebar: &str,
+        content: &str,
+        fab: &str,
+        title: &str,
+    ) -> Result<String, WikiError> {
+        debug!("Rendering shell template");
+        
+        let mut html = String::new();
+        html.push_str("<!doctype html>\n");
+        html.push_str("<html lang=\"en\">\n");
+        html.push_str("<head>\n");
+        html.push_str("    <meta charset=\"utf-8\">\n");
+        html.push_str("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+        html.push_str(&format!("    <title>{} - Strata Wiki</title>\n", title));
+        html.push_str("    <link rel=\"stylesheet\" href=\"/static/css/strata.css\">\n");
+        html.push_str("</head>\n");
+        html.push_str("<body>\n");
+        html.push_str("    <div class=\"layout\">\n");
+        html.push_str("        <aside class=\"sidebar glass\">");
+        html.push_str(sidebar);
+        html.push_str("</aside>\n");
+        html.push_str("        <main class=\"content\">\n");
+        html.push_str("            <div class=\"article-card glass\">\n");
+        html.push_str(content);
+        html.push_str("            </div>\n");
+        html.push_str("        </main>\n");
+        html.push_str("    </div>\n");
+        html.push_str("    <a class=\"back-to-top glass\" href=\"#top\" aria-label=\"Back to top\">↑</a>\n");
+        html.push_str(fab);
+        html.push_str("\n</body>\n");
+        html.push_str("</html>");
+
+        debug!("Shell template rendered successfully");
+        Ok(html)
     }
 }
 

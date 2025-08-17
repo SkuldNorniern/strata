@@ -58,14 +58,18 @@ pub async fn handle_root(State(state): State<AppState>) -> Result<impl IntoRespo
     Ok(Html(page).into_response())
 }
 
-/// Handle path-based requests
+/// Handle path requests
 pub async fn handle_path(
     State(state): State<AppState>,
     AxumPath(path): AxumPath<String>,
 ) -> Result<impl IntoResponse, WikiError> {
+    log::info!("Path request received: '{}'", path);
+    
     let normalized = normalize_path(&path);
     let requested = state.base_dir.join(&normalized);
-
+    
+    log::debug!("Normalized path: '{}', requested: {:?}", normalized, requested);
+    
     let file_service = FileService::new(state.base_dir.as_ref().clone());
     let navigation = NavigationComponent::new(file_service.clone());
     let fab = FabComponent::new();
@@ -73,60 +77,67 @@ pub async fn handle_path(
     
     // First check if the exact path exists
     if requested.exists() {
-    if requested.is_dir() {
+        if requested.is_dir() {
+            log::debug!("Path is a directory, checking for index files");
             // Check for index.md or README.md in directory
-        let index_md = requested.join("index.md");
-        let readme_md = requested.join("README.md");
+            let index_md = requested.join("index.md");
+            let readme_md = requested.join("README.md");
             
-        if index_md.is_file() {
+            if index_md.is_file() {
+                log::debug!("Found index.md in directory");
                 // Convert full path to relative path for FileService
                 let content = file_service.read_file(Path::new(&format!("{}/index.md", normalized)))?;
                 let markdown_service = MarkdownService::new();
                 let result = markdown_service.render_with_toc(&content)?;
-            let meta = last_modified_html(&index_md);
+                let meta = last_modified_html(&index_md);
                 let body = format!("{}{}", meta, result.html);
                 let actions = fab.generate_actions(&normalized);
                 let fab_html = fab.generate_fab_html(&normalized, &actions);
-                let sidebar = navigation.build_sidebar_html(&normalized)?;
+                let sidebar = navigation.build_sidebar_with_toc(&normalized, &result.toc)?;
                 let title = result.title.as_deref().unwrap_or(&normalized);
                 let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, title, &result.toc)?;
-            return Ok(Html(page).into_response());
-        }
+                log::info!("Serving index.md for directory: '{}'", normalized);
+                return Ok(Html(page).into_response());
+            }
             
-        if readme_md.is_file() {
+            if readme_md.is_file() {
+                log::debug!("Found README.md in directory");
                 // Convert full path to relative path for FileService
                 let content = file_service.read_file(Path::new(&format!("{}/README.md", normalized)))?;
                 let markdown_service = MarkdownService::new();
                 let result = markdown_service.render_with_toc(&content)?;
-            let meta = last_modified_html(&readme_md);
+                let meta = last_modified_html(&readme_md);
                 let body = format!("{}{}", meta, result.html);
                 let actions = fab.generate_actions(&normalized);
                 let fab_html = fab.generate_fab_html(&normalized, &actions);
-                let sidebar = navigation.build_sidebar_html(&normalized)?;
+                let sidebar = navigation.build_sidebar_with_toc(&normalized, &result.toc)?;
                 let title = result.title.as_deref().unwrap_or(&normalized);
                 let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, title, &result.toc)?;
+                log::info!("Serving README.md for directory: '{}'", normalized);
                 return Ok(Html(page).into_response());
             }
             
-            // Show directory listing
+            // Directory listing
+            log::debug!("No index files found, generating directory listing");
             let html = render_directory_listing(&file_service, &normalized)?;
             let sidebar = navigation.build_sidebar_html(&normalized)?;
             let actions = fab.generate_actions(&normalized);
             let fab_html = fab.generate_fab_html(&normalized, &actions);
             let page = templates.render_page_with_nav(&sidebar, &html, &fab_html, &normalized)?;
-        return Ok(Html(page).into_response());
-    }
-
-    if requested.is_file() {
+            log::info!("Serving directory listing for: '{}'", normalized);
+            return Ok(Html(page).into_response());
+        }
+        
+        if requested.is_file() {
+            log::debug!("Path is a file, serving via static handler");
             return serve_path(&state, &normalized, &requested).await;
         }
     }
-
+    
     // If the exact path doesn't exist, check for .md variant
     let md_variant = requested.with_extension("md");
-    
     if md_variant.is_file() {
-        // Convert full path to relative path for FileService
+        log::debug!("Found .md variant: {:?}", md_variant);
         let relative_path = md_variant.strip_prefix(&*state.base_dir)
             .map_err(|_| WikiError::InvalidPath)?;
         let content = file_service.read_file(relative_path)?;
@@ -139,9 +150,11 @@ pub async fn handle_path(
         let sidebar = navigation.build_sidebar_with_toc(&normalized, &result.toc)?;
         let title = result.title.as_deref().unwrap_or(&normalized);
         let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, title, &result.toc)?;
+        log::info!("Serving .md file: '{}'", normalized);
         return Ok(Html(page).into_response());
     }
-
+    
+    log::warn!("Path not found: '{}'", normalized);
     Err(WikiError::NotFound)
 }
 
@@ -235,35 +248,56 @@ pub async fn handle_search(
     State(state): State<AppState>,
     RawQuery(raw): RawQuery,
 ) -> Result<impl IntoResponse, WikiError> {
-    let query = parse_query_param(&raw.unwrap_or_default(), "q");
+    let raw_query = raw.unwrap_or_default();
+    let query = parse_query_param(&raw_query, "q");
+    
+    log::info!("Search request received for query: '{}'", query);
+    log::debug!("Raw query string: '{:?}'", raw_query);
+    
+    // Check for potentially problematic queries
+    let query = if query.len() > 1000 {
+        log::warn!("Very long search query received ({} chars), truncating", query.len());
+        // Truncate very long queries to prevent issues
+        &query[..1000]
+    } else {
+        &query
+    };
+    
+    let start_time = std::time::Instant::now();
+    
     let file_service = FileService::new(state.base_dir.as_ref().clone());
     let search_service = SearchService::new(file_service.clone());
-    let results = search_service.search(&query)?;
+    
+    log::debug!("Search service created, starting search...");
+    
+    let results = match search_service.search(&query) {
+        Ok(results) => {
+            log::info!("Search completed successfully, found {} results", results.len());
+            results
+        }
+        Err(e) => {
+            log::error!("Search failed: {:?}", e);
+            return Err(e);
+        }
+    };
     
     let search_content = render_search_results(&query, &results);
     
-    // Load search template
-    let search_path = Path::new("static/html/search.html");
-    if let Ok(tpl) = std::fs::read_to_string(search_path) {
-        let mut html = tpl;
-        html = html.replace("{{QUERY}}", &escape_attr(&query));
-        html = html.replace("{{SEARCH_CONTENT}}", &search_content);
-        let navigation = NavigationComponent::new(file_service);
-        html = html.replace("{{SIDEBAR}}", &navigation.build_sidebar_html("")?);
-        // FAB is now included in the search template
-        html = html.replace("{{FAB}}", "");
-        
-        return Ok(Html(html).into_response());
-    }
+    log::debug!("Search results rendered, creating response...");
     
-    // Fallback to inline HTML if template fails
+    // Use template component for consistent rendering
     let navigation = NavigationComponent::new(file_service);
     let sidebar = navigation.build_sidebar_html("")?;
     let fab = FabComponent::new();
     let actions = fab.generate_actions("");
     let fab_html = fab.generate_fab_html("", &actions);
     let templates = TemplateComponent::new();
+    
     let page = templates.render_page_with_nav(&sidebar, &search_content, &fab_html, "Search")?;
+    
+    let duration = start_time.elapsed();
+    log::info!("Search request completed in {:?}ms", duration.as_millis());
+    
     Ok(Html(page).into_response())
 }
 
@@ -397,16 +431,17 @@ fn render_search_results(query: &str, results: &[crate::types::SearchResult]) ->
     
     content.push_str("<div class=\"search-results\">");
     content.push_str(&format!("<h2 class=\"search-header\">Search Results for \"{}\"</h2>", escape_html(query)));
-    content.push_str(&format!("<p class=\"results-count\">Found {} results</p>", results.len()));
+    content.push_str(&format!("<p class=\"results-count\">Found {} result{}", results.len(), if results.len() == 1 { "" } else { "s" }));
     
     if results.is_empty() {
-        content.push_str("<div class=\"no-results\">");
-        content.push_str("<p>No results found for your search.</p>");
-        content.push_str("<p>Try:</p>");
+        content.push_str("<p class=\"no-results\">No results found for your search.</p>");
+        content.push_str("<div class=\"search-tips\">");
+        content.push_str("<h3>Search Tips:</h3>");
         content.push_str("<ul>");
-        content.push_str("<li>Using different keywords</li>");
-        content.push_str("<li>Checking spelling</li>");
-        content.push_str("<li>Using more general terms</li>");
+        content.push_str("<li>Try using different keywords</li>");
+        content.push_str("<li>Check spelling and try synonyms</li>");
+        content.push_str("<li>Use shorter, more general terms</li>");
+        content.push_str("<li>Browse the <a href=\"/guide/\">guides</a> or <a href=\"/reference/\">reference</a> sections</li>");
         content.push_str("</ul>");
         content.push_str("</div>");
     } else {
@@ -416,47 +451,22 @@ fn render_search_results(query: &str, results: &[crate::types::SearchResult]) ->
             let path_display = result.path.replace(".md", "");
             
             content.push_str("<div class=\"search-result-item glass\">");
-            
-            // Title and path
-            content.push_str("<div class=\"result-header\">");
             content.push_str(&format!(
                 "<h3 class=\"result-title\"><a href=\"{}\">{}</a></h3>",
                 escape_attr(&href), escape_html(&result.title)
             ));
-            content.push_str("<div class=\"result-meta\">");
             content.push_str(&format!(
-                "<span class=\"result-path\">/{}</span>",
+                "<p class=\"result-path\"><code>{}</code></p>",
                 escape_html(&path_display)
             ));
             content.push_str(&format!(
-                "<span class=\"result-stats\">{} matches • {} bytes</span>",
-                result.match_count, result.file_size
+                "<p class=\"result-excerpt\">{}</p>",
+                escape_html(&result.excerpt)
             ));
-            content.push_str("</div>");
-            content.push_str("</div>");
-            
-            // Main excerpt
-            if !result.excerpt.is_empty() {
-                content.push_str(&format!(
-                    "<div class=\"result-excerpt\">{}</div>",
-                    escape_html(&result.excerpt)
-                ));
-            }
-            
-            // Content preview with multiple contexts
-            if !result.content_preview.is_empty() && result.content_preview != result.excerpt {
-                content.push_str(&format!(
-                    "<div class=\"result-preview\">{}</div>",
-                    escape_html(&result.content_preview)
-                ));
-            }
-            
-            // Relevance score (for debugging, can be hidden in production)
             content.push_str(&format!(
-                "<div class=\"result-relevance\">Relevance: {:.1}</div>",
+                "<div class=\"result-meta\">Relevance: {:.1}</div>",
                 result.relevance
             ));
-            
             content.push_str("</div>");
         }
         content.push_str("</div>");

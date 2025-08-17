@@ -1,5 +1,6 @@
 use axum::{routing::get, Router};
 use tokio::net::TcpListener;
+use log::{info, error};
 
 use crate::config::Config;
 use crate::errors::WikiError;
@@ -13,15 +14,28 @@ mod handlers;
 mod services;
 mod types;
 mod utils;
+mod logger;
 
 #[tokio::main]
 async fn main() -> Result<(), WikiError> {
+    // Initialize logging first
+    if let Err(e) = logger::Logger::init() {
+        eprintln!("Failed to initialize logger: {}", e);
+        // Continue without logging if it fails
+    }
+    
+    info!("Starting Strata Wiki server...");
+    
     let config = Config::new();
+    info!("Configuration loaded successfully");
     
     // Validate directories exist
     if !config.base_dir.exists() {
+        error!("Base directory does not exist: {:?}", config.base_dir);
         return Err(WikiError::NotFound);
     }
+    
+    info!("Base directory validated: {:?}", config.base_dir);
 
     let state = AppState { 
         base_dir: config.base_dir.clone(), 
@@ -37,8 +51,13 @@ async fn main() -> Result<(), WikiError> {
         .with_state(state);
 
     let addr = config.socket_addr();
-    println!("Wiki listening on http://{}", addr);
+    info!("Wiki server starting on http://{}", addr);
     
     let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await.map_err(WikiError::from)
+    info!("Server listening successfully on {}", addr);
+    
+    axum::serve(listener, app).await.map_err(|e| {
+        error!("Server error: {}", e);
+        WikiError::from(e)
+    })
 }
