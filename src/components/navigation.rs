@@ -73,7 +73,10 @@ impl NavigationComponent {
                 
                 if entry.is_dir {
                     html.push_str(&format!("<li class=\"nav-item has-sub{}\">", current_class));
-                    html.push_str(&format!("<div class=\"nav-header\">{}</div>", display_name));
+                    // details/summary provides native expand/collapse without JavaScript
+                    let open_attr = if is_current { " open" } else { "" };
+                    html.push_str(&format!("<details{}>", open_attr));
+                    html.push_str(&format!("<summary>{}</summary>", display_name));
                     html.push_str("<ul class=\"nav-sub-list\">");
                     
                     // Recursively list sub-directories and files
@@ -81,7 +84,7 @@ impl NavigationComponent {
                     if let Ok(sub_entries) = self.file_service.list_directory(Path::new(&entry_path)) {
                         debug!("Found {} sub-entries in {:?}", sub_entries.len(), entry_path);
                         for sub_entry in sub_entries {
-                            if !sub_entry.name.starts_with('.') {
+                            if !sub_entry.name.starts_with('.') && sub_entry.name != "index.md" {
                                 let sub_href = if sub_entry.is_dir {
                                     format!("/{}/{}", entry_path, sub_entry.name)
                                 } else {
@@ -107,6 +110,7 @@ impl NavigationComponent {
                     }
                     
                     html.push_str("</ul>");
+                    html.push_str("</details>");
                     html.push_str("</li>");
                 } else {
                     html.push_str(&format!("<li{}>", current_class));

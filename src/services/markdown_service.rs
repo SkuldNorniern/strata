@@ -72,6 +72,33 @@ impl MarkdownService {
         let mut html = String::new();
         let lines: Vec<&str> = content.lines().collect();
         let mut i = 0;
+        let mut in_code_block = false;
+
+        // Track nested lists using a stack
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum ListKind { Unordered, Ordered }
+        struct ListFrame { kind: ListKind, indent_level: usize }
+        let mut list_stack: Vec<ListFrame> = Vec::new();
+
+        // Helper to close N list levels
+        let close_list_levels = |levels: usize, out: &mut String, stack: &mut Vec<ListFrame>| {
+            for _ in 0..levels {
+                if let Some(frame) = stack.pop() {
+                    match frame.kind {
+                        ListKind::Unordered => out.push_str("</ul>\n"),
+                        ListKind::Ordered => out.push_str("</ol>\n"),
+                    }
+                }
+            }
+        };
+        // Helper to open a list of kind at given level
+        let open_list = |kind: ListKind, out: &mut String, stack: &mut Vec<ListFrame>, indent_level: usize| {
+            match kind {
+                ListKind::Unordered => out.push_str("<ul>\n"),
+                ListKind::Ordered => out.push_str("<ol>\n"),
+            }
+            stack.push(ListFrame { kind, indent_level });
+        };
         
         while i < lines.len() {
             let line = lines[i];
@@ -86,7 +113,37 @@ impl MarkdownService {
                 continue;
             }
             
+            // Code blocks: triple backticks start/end
+            if line.starts_with("```") {
+                // If we are inside any open lists, close them before code blocks
+                if !list_stack.is_empty() {
+                    let levels = list_stack.len();
+                    close_list_levels(levels, &mut html, &mut list_stack);
+                }
+
+                in_code_block = !in_code_block;
+                if in_code_block {
+                    let lang = line.trim_start_matches("```").trim();
+                    html.push_str(&format!("<pre><code class=\"language-{}\">", lang));
+                } else {
+                    html.push_str("</code></pre>\n");
+                }
+                i += 1;
+                continue;
+            }
+
+            if in_code_block {
+                html.push_str(&format!("{}\n", escape_html(line)));
+                i += 1;
+                continue;
+            }
+
             if line.starts_with('#') {
+                // Close any open lists before headers
+                if !list_stack.is_empty() {
+                    let levels = list_stack.len();
+                    close_list_levels(levels, &mut html, &mut list_stack);
+                }
                 let level = line.chars().take_while(|&c| c == '#').count();
                 let text = line.trim_start_matches('#').trim();
                 if !text.is_empty() {
@@ -98,60 +155,122 @@ impl MarkdownService {
                     let processed_text = self.process_inline_markdown(text);
                     html.push_str(&format!("<h{} id=\"{}\">{}</h{}>\n", level, anchor, processed_text, level));
                 }
-            } else if line.starts_with("```") {
-                // Code block
-                let lang = line.trim_start_matches("```").trim();
-                html.push_str(&format!("<pre><code class=\"language-{}\">", lang));
-                i += 1;
-                while i < lines.len() && !lines[i].starts_with("```") {
-                    html.push_str(&format!("{}\n", escape_html(lines[i])));
-                    i += 1;
-                }
-                html.push_str("</code></pre>\n");
-            } else if line.starts_with("- [ ]") {
-                // Task list item (unchecked)
-                let text = line.trim_start_matches("- [ ]").trim();
-                html.push_str(&format!("<li><input type=\"checkbox\" disabled> {}</li>\n", 
-                    self.process_inline_markdown(text)));
-            } else if line.starts_with("- [x]") {
-                // Task list item (checked)
-                let text = line.trim_start_matches("- [x]").trim();
-                html.push_str(&format!("<li><input type=\"checkbox\" checked disabled> {}</li>\n", 
-                    self.process_inline_markdown(text)));
-            } else if line.starts_with("- ") {
-                // Unordered list item
-                let text = line.trim_start_matches("- ").trim();
-                html.push_str(&format!("<li>{}</li>\n", 
-                    self.process_inline_markdown(text)));
-            } else if line.chars().next().map_or(false, |c| c.is_digit(10)) && line.contains(". ") {
-                // Ordered list item - handle any numbered list
-                let text = line.splitn(2, ". ").nth(1).unwrap_or("").trim();
-                if !text.is_empty() {
-                    html.push_str(&format!("<li>{}</li>\n", 
-                        self.process_inline_markdown(text)));
-                }
-            } else if line.matches('|').count() > 1 {
-                // Table
-                let table_html = self.render_table(&lines, i)?;
-                html.push_str(&table_html);
-                // Skip table lines
-                while i < lines.len() && lines[i].contains('|') {
-                    i += 1;
-                }
-                continue;
-            } else if line.trim().is_empty() {
-                html.push_str("<br>\n");
             } else {
-                // Regular paragraph
-                let processed = self.process_inline_markdown(line);
-                if !processed.trim().is_empty() {
-                    html.push_str(&format!("<p>{}</p>\n", processed));
+                // Compute indentation (tabs count as 1, every 4 spaces as 1)
+                let mut pos = 0usize;
+                let mut tab_count = 0usize;
+                let mut space_count = 0usize;
+                for ch in line.chars() {
+                    match ch {
+                        '\t' => { tab_count += 1; pos += 1; },
+                        ' ' => { space_count += 1; pos += 1; },
+                        _ => break,
+                    }
+                }
+                let indent_level = tab_count + (space_count / 4);
+
+                // Determine if this is a list item
+                let rest = &line[pos..];
+                let mut is_list_item = false;
+                let mut kind: Option<ListKind> = None;
+                let mut content_start = pos;
+
+                // Unordered markers: -, *, + followed by space
+                if rest.starts_with("- ") || rest.starts_with("* ") || rest.starts_with("+ ") {
+                    is_list_item = true;
+                    kind = Some(ListKind::Unordered);
+                    content_start = pos + 2;
+                } else {
+                    // Ordered marker: digits + '. '
+                    let mut j = pos;
+                    while j < line.len() {
+                        if let Some(ch) = line[j..].chars().next() {
+                            if ch.is_ascii_digit() { j += ch.len_utf8(); } else { break; }
+                        } else { break; }
+                    }
+                    // Need at least one digit, then '.' and space
+                    if j > pos {
+                        let after_digits = &line[j..];
+                        if after_digits.starts_with(". ") {
+                            is_list_item = true;
+                            kind = Some(ListKind::Ordered);
+                            content_start = j + 2;
+                        }
+                    }
+                }
+
+                if is_list_item {
+                    let this_kind = kind.unwrap_or(ListKind::Unordered);
+
+                    // Adjust stack according to indent level and kind
+                    let current_depth = list_stack.len();
+                    let target_depth = indent_level + 1; // root list has depth 1
+
+                    if target_depth < current_depth {
+                        // Close extra levels
+                        let levels = current_depth - target_depth;
+                        close_list_levels(levels, &mut html, &mut list_stack);
+                    }
+                    // If same level but kind changed, close one and reopen
+                    if let Some(top) = list_stack.last() {
+                        if top.indent_level + 1 == target_depth && top.kind != this_kind {
+                            close_list_levels(1, &mut html, &mut list_stack);
+                        }
+                    }
+                    // Open lists until reaching target depth
+                    while list_stack.len() < target_depth {
+                        let current_len = list_stack.len();
+                        open_list(this_kind, &mut html, &mut list_stack, current_len);
+                    }
+
+                    // Now add list item
+                    let item_text = &line[content_start..].trim_end();
+                    let processed = self.process_inline_markdown(item_text.trim());
+                    html.push_str(&format!("<li>{}</li>\n", processed));
+                } else if line.matches('|').count() > 1 {
+                    // Close lists before tables
+                    if !list_stack.is_empty() {
+                        let levels = list_stack.len();
+                        close_list_levels(levels, &mut html, &mut list_stack);
+                    }
+                    // Table
+                    let table_html = self.render_table(&lines, i)?;
+                    html.push_str(&table_html);
+                    // Skip table lines
+                    while i < lines.len() && lines[i].contains('|') {
+                        i += 1;
+                    }
+                    continue;
+                } else if line.trim().is_empty() {
+                    // On blank line, close any open lists
+                    if !list_stack.is_empty() {
+                        let levels = list_stack.len();
+                        close_list_levels(levels, &mut html, &mut list_stack);
+                    }
+                    html.push_str("<br>\n");
+                } else {
+                    // Non-list paragraph; close any open lists first
+                    if !list_stack.is_empty() {
+                        let levels = list_stack.len();
+                        close_list_levels(levels, &mut html, &mut list_stack);
+                    }
+                    // Regular paragraph
+                    let processed = self.process_inline_markdown(line);
+                    if !processed.trim().is_empty() {
+                        html.push_str(&format!("<p>{}</p>\n", processed));
+                    }
                 }
             }
             
             i += 1;
         }
         
+        // Close any remaining open lists
+        if !list_stack.is_empty() {
+            let levels = list_stack.len();
+            close_list_levels(levels, &mut html, &mut list_stack);
+        }
+
         debug!("Markdown to HTML conversion completed, output length: {} chars", html.len());
         Ok(html)
     }
