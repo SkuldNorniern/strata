@@ -2,7 +2,9 @@
     <div class="fab-menu">
         <a href="/" class="fab-item" title="Home"></a>
         <div class="fab-search">
-            <input type="text" placeholder="Search..." onkeypress="if(event.key==='Enter'){window.location.href='/search?q='+this.value}">
+            <form action="/search" method="get" style="display:flex;width:100%">
+                <input type="text" name="q" placeholder="Search..." style="flex:1;border:none;background:none;outline:none;color:inherit;font:inherit">
+            </form>
         </div>
         <div class="fab-actions">
             {{BOTTOM_ACTIONS}}

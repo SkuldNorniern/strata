@@ -43,7 +43,9 @@ impl FabComponent {
         debug!("Generating FAB HTML for path: '{}' with {} actions", path, actions.len());
         let start_time = std::time::Instant::now();
         
-        let fab_class = if path.is_empty() { "fab-home" } else { "fab-page" };
+        // Use fab-page for search pages and other non-home pages to ensure home button is visible
+        // Only use fab-home for the actual home page (which is handled separately in handlers)
+        let fab_class = "fab-page";
         
         let mut html = format!("<div class=\"fab glass {}\" id=\"fab\">", fab_class);
         html.push_str("<div class=\"fab-menu\">");
@@ -53,7 +55,9 @@ impl FabComponent {
         
         // Search bar
         html.push_str("<div class=\"fab-search\">");
-        html.push_str("<input type=\"text\" placeholder=\"Search...\" onkeypress=\"if(event.key==='Enter'){window.location.href='/search?q='+this.value}\">");
+        html.push_str("<form action=\"/search\" method=\"get\" style=\"display:flex;width:100%\">");
+        html.push_str("<input type=\"text\" name=\"q\" placeholder=\"Search...\" style=\"flex:1;border:none;background:none;outline:none;color:inherit;font:inherit\">");
+        html.push_str("</form>");
         html.push_str("</div>");
         
         // Action buttons
@@ -73,6 +77,45 @@ impl FabComponent {
         
         let duration = start_time.elapsed();
         info!("FAB HTML generated in {:?}ms for path: '{}'", duration.as_millis(), path);
+        
+        html
+    }
+
+    /// Generate home page FAB HTML (with fab-home class)
+    pub fn generate_home_fab_html(&self, actions: &[FabAction]) -> String {
+        debug!("Generating home page FAB HTML with {} actions", actions.len());
+        let start_time = std::time::Instant::now();
+        
+        let mut html = format!("<div class=\"fab glass fab-home\" id=\"fab\">");
+        html.push_str("<div class=\"fab-menu\">");
+        
+        // Home button (hidden on home page)
+        html.push_str("<a href=\"/\" class=\"fab-item\" title=\"Home\"></a>");
+        
+        // Search bar
+        html.push_str("<div class=\"fab-search\">");
+        html.push_str("<form action=\"/search\" method=\"get\" style=\"display:flex;width:100%\">");
+        html.push_str("<input type=\"text\" name=\"q\" placeholder=\"Search...\" style=\"flex:1;border:none;background:none;outline:none;color:inherit;font:inherit\">");
+        html.push_str("</form>");
+        html.push_str("</div>");
+        
+        // Action buttons (hidden on home page)
+        if !actions.is_empty() {
+            html.push_str("<div class=\"fab-actions\">");
+            for action in actions {
+                html.push_str(&format!(
+                    "<a href=\"{}\" title=\"{}\" class=\"{}\"></a>",
+                    action.href, action.title, action.class
+                ));
+            }
+            html.push_str("</div>");
+        }
+        
+        html.push_str("</div>");
+        html.push_str("</div>");
+        
+        let duration = start_time.elapsed();
+        info!("Home page FAB HTML generated in {:?}ms", duration.as_millis());
         
         html
     }

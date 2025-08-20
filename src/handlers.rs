@@ -30,7 +30,7 @@ pub async fn handle_root(State(state): State<AppState>) -> Result<impl IntoRespo
         let meta = last_modified_html(&index_md);
         let body = format!("{}{}", meta, result.html);
         let actions = fab.generate_actions("");
-        let fab_html = fab.generate_fab_html("", &actions);
+        let fab_html = fab.generate_home_fab_html(&actions);
         let sidebar = navigation.build_sidebar_html("")?;
         let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, result.title.as_deref().unwrap_or("Wiki"), &result.toc)?;
         return Ok(Html(page).into_response());
@@ -43,7 +43,7 @@ pub async fn handle_root(State(state): State<AppState>) -> Result<impl IntoRespo
         let meta = last_modified_html(&readme_md);
         let body = format!("{}{}", meta, result.html);
         let actions = fab.generate_actions("");
-        let fab_html = fab.generate_fab_html("", &actions);
+        let fab_html = fab.generate_home_fab_html(&actions);
         let sidebar = navigation.build_sidebar_html("")?;
         let page = templates.render_page_with_nav_and_toc(&sidebar, &body, &fab_html, result.title.as_deref().unwrap_or("Wiki"), &result.toc)?;
         return Ok(Html(page).into_response());
@@ -53,7 +53,7 @@ pub async fn handle_root(State(state): State<AppState>) -> Result<impl IntoRespo
     let html = render_directory_listing(&file_service, "")?;
     let sidebar = navigation.build_sidebar_html("")?;
     let actions = fab.generate_actions("");
-    let fab_html = fab.generate_fab_html("", &actions);
+    let fab_html = fab.generate_home_fab_html(&actions);
     let page = templates.render_page_with_nav(&sidebar, &html, &fab_html, "Wiki")?;
     Ok(Html(page).into_response())
 }
