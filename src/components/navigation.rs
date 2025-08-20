@@ -22,7 +22,7 @@ impl NavigationComponent {
         
         let sidebar_html = self.build_sidebar_html(current_path)?;
         let toc_html = if !toc.is_empty() {
-            format!("<div class=\"sidebar-toc\">{}</div>", toc)
+            format!("<div class=\"sidebar-toc\"><h4 class=\"sidebar-toc-title\">On This Page</h4>{}</div>", toc)
         } else {
             String::new()
         };
@@ -44,17 +44,15 @@ impl NavigationComponent {
         html.push_str("<div class=\"sidebar-nav\">");
         html.push_str("<h3>Navigation</h3>");
         
+        // Always list from root directory for consistent navigation
         let entries = self.file_service.list_directory(Path::new(""))?;
         debug!("Found {} entries in root directory", entries.len());
         
         html.push_str("<ul class=\"nav-list\">");
         for entry in entries {
-            if !entry.name.starts_with('.') { // Skip hidden files
-                let entry_path = if current_path.is_empty() {
-                    entry.name.clone()
-                } else {
-                    format!("{}/{}", current_path, entry.name)
-                };
+            if !entry.name.starts_with('.') && entry.name != "index.md" { // Skip hidden files and index.md
+                // entry_path should always be just the entry name for navigation structure
+                let entry_path = entry.name.clone();
                 
                 let href = if entry.is_dir {
                     format!("/{}", entry_path)
@@ -75,11 +73,16 @@ impl NavigationComponent {
                 
                 if entry.is_dir {
                     html.push_str(&format!("<li class=\"nav-item has-sub{}\">", current_class));
-                    html.push_str(&format!("<span class=\"nav-toggle\">{}</span>", display_name));
+                    html.push_str("<div class=\"nav-header\">");
+                    html.push_str("<span class=\"nav-toggle\"></span>");
+                    html.push_str(&format!("<span class=\"nav-text\">{}</span>", display_name));
+                    html.push_str("</div>");
                     html.push_str("<ul class=\"nav-sub-list\">");
                     
                     // Recursively list sub-directories and files
+                    debug!("Listing sub-directory: {:?}", entry_path);
                     if let Ok(sub_entries) = self.file_service.list_directory(Path::new(&entry_path)) {
+                        debug!("Found {} sub-entries in {:?}", sub_entries.len(), entry_path);
                         for sub_entry in sub_entries {
                             if !sub_entry.name.starts_with('.') {
                                 let sub_href = if sub_entry.is_dir {
@@ -122,10 +125,23 @@ impl NavigationComponent {
         html.push_str("<script>
             document.addEventListener('DOMContentLoaded', function() {
                 const navToggles = document.querySelectorAll('.nav-toggle');
+                const navTexts = document.querySelectorAll('.nav-text');
+                
+                console.log('Found', navToggles.length, 'nav toggles and', navTexts.length, 'nav texts');
+                
                 navToggles.forEach(function(toggle) {
                     toggle.addEventListener('click', function() {
                         const parent = this.parentElement;
                         parent.classList.toggle('expanded');
+                        console.log('Toggle clicked, expanded:', parent.classList.contains('expanded'));
+                    });
+                });
+                
+                navTexts.forEach(function(text) {
+                    text.addEventListener('click', function() {
+                        const parent = this.parentElement;
+                        parent.classList.toggle('expanded');
+                        console.log('Text clicked, expanded:', parent.classList.contains('expanded'));
                     });
                 });
             });

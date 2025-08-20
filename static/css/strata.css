@@ -29,6 +29,9 @@ h6{font-size:1rem;margin-top:1.4em;color:var(--txt);opacity:0.7}
 /* Header ID styling for better anchor links */
 h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]{scroll-margin-top:100px}
 
+/* Smooth scrolling for anchor links */
+html{scroll-behavior:smooth}
+
 /* Enhanced Paragraphs and Content */
 p{margin:1.2em 0;line-height:1.8;color:var(--txt);opacity:0.9}
 p:first-of-type{margin-top:0}
@@ -128,16 +131,28 @@ h1{font-size:1.8rem}h2{font-size:1.4rem}h3{font-size:1.2rem}
 .nav-item a:hover{background:rgba(127,127,127,.1);border-color:var(--glass-bd);transform:translateX(4px)}
 .nav-item a.active{background:var(--link);color:white;border-color:var(--link);box-shadow:0 2px 8px rgba(52,81,178,0.3)}
 
+/* Navigation items with sub-items - ensure proper layout */
+.nav-item.has-sub{display:block;position:relative;min-height:44px}
+.nav-item.has-sub .nav-header{display:flex;align-items:center;gap:0;cursor:pointer;padding:10px 0}
+.nav-item.has-sub .nav-toggle{order:-1;z-index:2}
+.nav-item.has-sub .nav-text{flex:1;padding:10px 0;cursor:pointer;user-select:none;color:var(--txt);font-weight:500;font-size:14px;line-height:1.4;z-index:1}
+.nav-item.has-sub .nav-text:hover{color:var(--link)}
+
 /* Toggle button for navigation items */
-.nav-toggle{display:inline-block;width:16px;height:16px;margin-right:8px;cursor:pointer;transition:transform 0.3s ease;position:relative}
-.nav-toggle:before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);width:8px;height:2px;background:var(--txt);transition:all 0.3s ease}
-.nav-toggle:after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);width:2px;height:8px;background:var(--txt);transition:all 0.3s ease}
+.nav-toggle{display:inline-block;width:20px;height:20px;margin-right:12px;cursor:pointer;transition:transform 0.3s ease;position:relative;flex-shrink:0;border-radius:4px}
+.nav-toggle:before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);width:10px;height:2px;background:var(--txt);transition:all 0.3s ease;border-radius:1px}
+.nav-toggle:after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);width:2px;height:10px;background:var(--txt);transition:all 0.3s ease;border-radius:1px}
 .nav-toggle.expanded:after{transform:translate(-50%, -50%) rotate(90deg);opacity:0}
 .nav-toggle:hover:before,.nav-toggle:hover:after{background:var(--link)}
+.nav-toggle:hover{background:rgba(127,127,127,.1)}
 
 /* Nested Navigation Styles */
-.nav-sub-list{list-style:none;padding-left:16px;margin:4px 0;border-left:2px solid rgba(127,127,127,.2);max-height:0;overflow:hidden;transition:max-height 0.3s ease}
-.nav-sub-list.expanded{max-height:200px}
+.nav-sub-list{list-style:none;padding-left:16px;margin:8px 0 4px 0;border-left:2px solid rgba(127,127,127,.2);max-height:0;overflow:hidden;transition:all 0.3s ease;opacity:0;transform:translateY(-10px)}
+
+/* Navigation item expanded state */
+.nav-item.has-sub.expanded .nav-toggle:after{transform:translate(-50%, -50%) rotate(90deg);opacity:0}
+.nav-item.has-sub.expanded .nav-sub-list{max-height:500px;opacity:1;transform:translateY(0);margin-top:8px}
+.nav-item.has-sub.expanded{margin-bottom:16px}
 .nav-sub-item{margin:4px 0}
 .nav-sub-item a{display:block;padding:6px 12px;text-decoration:none;color:var(--txt);border-radius:6px;transition:all 0.2s ease;font-weight:400;font-size:13px;border:1px solid transparent;opacity:0.8}
 .nav-sub-item a:hover{background:rgba(127,127,127,.08);border-color:var(--glass-bd);transform:translateX(2px);opacity:1}

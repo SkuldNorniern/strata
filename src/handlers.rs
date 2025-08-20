@@ -431,7 +431,7 @@ fn render_search_results(query: &str, results: &[crate::types::SearchResult]) ->
     
     content.push_str("<div class=\"search-results\">");
     content.push_str(&format!("<h2 class=\"search-header\">Search Results for \"{}\"</h2>", escape_html(query)));
-    content.push_str(&format!("<p class=\"results-count\">Found {} result{}", results.len(), if results.len() == 1 { "" } else { "s" }));
+    content.push_str(&format!("<p class=\"results-count\">Found {} result{}</p>", results.len(), if results.len() == 1 { "" } else { "s" }));
     
     if results.is_empty() {
         content.push_str("<p class=\"no-results\">No results found for your search.</p>");

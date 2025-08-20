@@ -90,7 +90,12 @@ impl MarkdownService {
                 let level = line.chars().take_while(|&c| c == '#').count();
                 let text = line.trim_start_matches('#').trim();
                 if !text.is_empty() {
-                    html.push_str(&format!("<h{}>{}</h{}>\n", level, text, level));
+                    let anchor = text.to_lowercase()
+                        .chars()
+                        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { '-' })
+                        .collect::<String>()
+                        .replace(" ", "-");
+                    html.push_str(&format!("<h{} id=\"{}\">{}</h{}>\n", level, anchor, text, level));
                 }
             } else if line.starts_with("```") {
                 // Code block
