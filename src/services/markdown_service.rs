@@ -95,7 +95,8 @@ impl MarkdownService {
                         .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { '-' })
                         .collect::<String>()
                         .replace(" ", "-");
-                    html.push_str(&format!("<h{} id=\"{}\">{}</h{}>\n", level, anchor, text, level));
+                    let processed_text = self.process_inline_markdown(text);
+                    html.push_str(&format!("<h{} id=\"{}\">{}</h{}>\n", level, anchor, processed_text, level));
                 }
             } else if line.starts_with("```") {
                 // Code block
@@ -122,6 +123,13 @@ impl MarkdownService {
                 let text = line.trim_start_matches("- ").trim();
                 html.push_str(&format!("<li>{}</li>\n", 
                     self.process_inline_markdown(text)));
+            } else if line.chars().next().map_or(false, |c| c.is_digit(10)) && line.contains(". ") {
+                // Ordered list item - handle any numbered list
+                let text = line.splitn(2, ". ").nth(1).unwrap_or("").trim();
+                if !text.is_empty() {
+                    html.push_str(&format!("<li>{}</li>\n", 
+                        self.process_inline_markdown(text)));
+                }
             } else if line.matches('|').count() > 1 {
                 // Table
                 let table_html = self.render_table(&lines, i)?;
@@ -158,8 +166,8 @@ impl MarkdownService {
         // Process links [text](url)
         result = self.process_links(&result);
         
-        // Process inline code `code`
-        result = self.replace_emphasis(&result, "`", "<code>", "</code>");
+        // Process inline code `code` - handle backticks properly
+        result = self.process_inline_code(&result);
         
         // Process strikethrough ~~text~~
         result = self.replace_emphasis(&result, "~~", "<del>", "</del>");
@@ -209,12 +217,15 @@ impl MarkdownService {
                         
                         if is_closing {
                             let content: String = chars[i + marker_len..j].iter().collect();
-                            result.push_str(open_tag);
-                            result.push_str(&content);
-                            result.push_str(close_tag);
-                            i = j + marker_len;
-                            found = true;
-                            break;
+                            // Skip if content is empty or contains only whitespace
+                            if !content.trim().is_empty() {
+                                result.push_str(open_tag);
+                                result.push_str(&content);
+                                result.push_str(close_tag);
+                                i = j + marker_len;
+                                found = true;
+                                break;
+                            }
                         }
                         j += 1;
                     }
@@ -318,6 +329,38 @@ impl MarkdownService {
         result
     }
 
+    /// Process inline code `code`
+    fn process_inline_code(&self, text: &str) -> String {
+        let mut result = String::new();
+        let mut i = 0;
+        let chars: Vec<char> = text.chars().collect();
+        
+        while i < chars.len() {
+            if i < chars.len() && chars[i] == '`' {
+                // Find closing backtick
+                let mut j = i + 1;
+                while j < chars.len() && chars[j] != '`' {
+                    j += 1;
+                }
+                
+                if j < chars.len() {
+                    let code_content: String = chars[i + 1..j].iter().collect();
+                    // Skip if content is empty or contains only whitespace
+                    if !code_content.trim().is_empty() {
+                        result.push_str(&format!("<code>{}</code>", escape_html(&code_content)));
+                        i = j + 1;
+                        continue;
+                    }
+                }
+            }
+            
+            result.push(chars[i]);
+            i += 1;
+        }
+        
+        result
+    }
+
     /// Render table from markdown
     fn render_table(&self, lines: &[&str], start_idx: usize) -> Result<String, WikiError> {
         let mut html = String::new();
@@ -366,8 +409,27 @@ impl MarkdownService {
         
         let mut toc = String::new();
         let mut items = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+        let mut in_code_block = false;
         
-        for line in content.lines() {
+        while i < lines.len() {
+            let line = lines[i];
+            
+            // Check for code block boundaries
+            if line.starts_with("```") {
+                in_code_block = !in_code_block;
+                i += 1;
+                continue;
+            }
+            
+            // Skip processing if we're inside a code block
+            if in_code_block {
+                i += 1;
+                continue;
+            }
+            
+            // Process headers only when not in code blocks
             if line.starts_with('#') {
                 let level = line.chars().take_while(|&c| c == '#').count();
                 if level <= 6 { // Support H1-H6
@@ -383,6 +445,8 @@ impl MarkdownService {
                     }
                 }
             }
+            
+            i += 1;
         }
         
         if !items.is_empty() {

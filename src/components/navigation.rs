@@ -73,10 +73,7 @@ impl NavigationComponent {
                 
                 if entry.is_dir {
                     html.push_str(&format!("<li class=\"nav-item has-sub{}\">", current_class));
-                    html.push_str("<div class=\"nav-header\">");
-                    html.push_str("<span class=\"nav-toggle\"></span>");
-                    html.push_str(&format!("<span class=\"nav-text\">{}</span>", display_name));
-                    html.push_str("</div>");
+                    html.push_str(&format!("<div class=\"nav-header\">{}</div>", display_name));
                     html.push_str("<ul class=\"nav-sub-list\">");
                     
                     // Recursively list sub-directories and files
@@ -121,31 +118,7 @@ impl NavigationComponent {
         html.push_str("</ul>");
         html.push_str("</div>");
         
-        // Add JavaScript for toggle functionality
-        html.push_str("<script>
-            document.addEventListener('DOMContentLoaded', function() {
-                const navToggles = document.querySelectorAll('.nav-toggle');
-                const navTexts = document.querySelectorAll('.nav-text');
-                
-                console.log('Found', navToggles.length, 'nav toggles and', navTexts.length, 'nav texts');
-                
-                navToggles.forEach(function(toggle) {
-                    toggle.addEventListener('click', function() {
-                        const parent = this.parentElement;
-                        parent.classList.toggle('expanded');
-                        console.log('Toggle clicked, expanded:', parent.classList.contains('expanded'));
-                    });
-                });
-                
-                navTexts.forEach(function(text) {
-                    text.addEventListener('click', function() {
-                        const parent = this.parentElement;
-                        parent.classList.toggle('expanded');
-                        console.log('Text clicked, expanded:', parent.classList.contains('expanded'));
-                    });
-                });
-            });
-        </script>");
+
         
         let duration = start_time.elapsed();
         info!("Basic sidebar HTML built in {:?}ms for path: '{}'", duration.as_millis(), current_path);

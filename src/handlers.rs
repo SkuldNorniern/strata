@@ -339,7 +339,7 @@ pub async fn handle_raw(
             <p class="error-message">The requested page could not be found.</p>
             <div class="error-actions">
                 <a href="/" class="error-btn primary">Go Home</a>
-                <a href="javascript:history.back()" class="error-btn secondary">Go Back</a>
+                <a href="/" class="error-btn secondary">Go Home</a>
             </div>
         </div>
     </div>
